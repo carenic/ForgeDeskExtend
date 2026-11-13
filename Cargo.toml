@@ -25,7 +25,7 @@ parking_lot = "0.12"        # Faster mutexes than std (important for free-thread
 # - os-webview pulls in gtk, webkit2gtk on Linux
 # - x11 pulls in gdkx11, x11-dl, and tao/x11
 # So we do NOT need separate gtk/gdk/raw-window-handle deps for Linux.
-tao = "0.34"
+tao = "0.35"
 wry = { version = "0.54", features = ["devtools"] }
 muda = "0.15"
 tray-icon = "0.19"

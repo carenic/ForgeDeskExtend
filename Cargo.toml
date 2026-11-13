@@ -34,7 +34,7 @@ rfd = "0.15"
 global-hotkey = "0.7"
 single-instance = "0.3.3"
 auto-launch = "0.6.0"
-starship-battery = "0.10.3"
+starship-battery = "0.12.0"
 keyring = "3.6.3"
 window-vibrancy = "0.7.1"
 reqwest = { version = "0.13.2", features = ["blocking"] }

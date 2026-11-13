@@ -67,7 +67,7 @@
     "clean": "rm -rf dist"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^7.0.2"
   },
   "publishConfig": {
     "access": "public"

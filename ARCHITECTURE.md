@@ -2,6 +2,22 @@
 
 Technical architecture documentation for developers contributing to ForgeDesk.
 
+> **📌 正在阅读本文档的智能体 / 读者请先看这里。**
+>
+> 若你的任务涉及 **GPU / 本地 AI 加速 / JAX / ROCm / AMD / iGPU / 推理**，
+> 请先阅读 **[ARCHITECTURE_ROCM_JAX.md](ARCHITECTURE_ROCM_JAX.md)** —— 那是一份
+> 独立的、背景完整的架构设计提案，涵盖：
+>
+> - AMD ROCm 10 + JAX 集成的开发背景与目标硬件（Strix Halo / gfx1151）约束；
+> - 上游现状：ROCm 10 JAX 的 Python 版本支持（**只有 GIL wheel**）、gfx1151 的
+>   支持状态、以及 **三个未修复缺陷**（引用 `ROCm/jax` PR #887）；
+> - `ROCm/jax#871` 的 50.5 GB 内存问题的根因分析与两级解法；
+> - 由此引申出的 **worker 进程模型**架构改造（主架构图 + IPC 通信流程图）；
+> - 新架构相对本仓库的**待开发模块清单**与 IPC 流程对应关系。
+>
+> 本文档（ARCHITECTURE.md）描述的是**当前已实现的通用框架架构**；
+> `ARCHITECTURE_ROCM_JAX.md` 描述的是**尚未实现的扩展设计**。两者不要混淆。
+
 ## System Overview
 
 ForgeDesk is a hybrid Python/Rust desktop application framework that leverages OS-native WebViews for rendering UI. It follows a layered architecture with clear separation of concerns.
@@ -32,6 +48,8 @@ ForgeDesk is a hybrid Python/Rust desktop application framework that leverages O
 
 ```
 forge-framework/
+├── ARCHITECTURE.md           # This document — general framework architecture
+├── ARCHITECTURE_ROCM_JAX.md  # Proposed design — AMD ROCm 10 + JAX worker tier
 ├── forge/                    # Python framework core
 │   ├── __init__.py          # Package entry point
 │   ├── app.py               # ForgeApp main class
@@ -137,6 +155,56 @@ forge-framework/
 
 5. Response Flow
    └── Python → JSON → Rust → WebSocket → Frontend
+```
+
+**Note:** Steps 1–5 above are the flow as currently implemented. A proposed
+**worker process tier** extends this with a second, separate transport
+(msgspec JSON frames over a worker's stdin/stdout) plus lifecycle events
+flowing back through `forge/tasks.py`. That design — including its rationale,
+its upstream constraints, and the modules it would require — is specified in
+[ARCHITECTURE_ROCM_JAX.md](ARCHITECTURE_ROCM_JAX.md). The two channels have
+distinct responsibilities and must not be conflated:
+
+| Channel | Carries | Status |
+|---|---|---|
+| Webview ↔ main process | UI commands, results (WS/HTTP) | Implemented |
+| Main process ↔ worker | Inference request/response (stdin/stdout frames) | Proposed |
+| `forge/tasks.py` events | Lifecycle and event flow-back | Implemented |
+
+The proposed worker-tier call sequence:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Webview
+    participant BR as forge.bridge<br/>(主进程)
+    participant TM as forge.tasks<br/>TaskManager
+    participant SUP as worker 监管器
+    participant LD as bin/jax-worker<br/>(启动器)
+    participant WK as jax worker<br/>(子进程)
+    participant GPU as iGPU gfx1151
+
+    UI->>BR: invoke("jax_infer", {payload})
+    BR->>TM: task_start("jax-infer")
+    TM->>SUP: 请求 spawn worker
+    SUP->>LD: Popen([bin/jax-worker]) + 加入 cgroup
+    Note over LD: 顺序有约束：先 cgroup join，<br/>再 exec；绝不能 Popen 之后再补写 cgroup.procs
+    LD->>LD: cgroup join → 设 XLA_FLAGS /<br/>XLA_CLIENT_MEM_FRACTION → exec
+    LD->>WK: exec(worker)  ← 此处才 import jax
+    WK->>GPU: 首次 device_put → 预留量 = 0.75 × total ⚠️
+    SUP->>WK: stdin ← msgspec JSON 请求帧
+
+    Note over WK,GPU: total 被 APU 高估（VRAM+GTT 重复计数）<br/>默认 75% ≈ 50GB；fraction 生效后 ≈ 3-16GB<br/>未生效时由 MemoryMax 兜底 → worker 被 OOM kill
+
+    WK->>GPU: XLA 编译 / 执行
+    GPU-->>WK: 结果
+    WK->>SUP: stdout ← msgspec JSON 响应帧
+    SUP->>TM: 完成回调
+    TM-->>BR: emit("task:completed", {task_id, result})
+    BR-->>UI: 响应 + 进度事件
+    UI->>UI: 与 CPU 参考值比对 ⚠️ gfx1151 静默错误
+
+    Note over SUP,WK: 停止路径：task_cancel → SIGTERM →<br/>exit_files() → filp_close(/dev/kfd) →<br/>KFD GPU VM 销毁 → amdgpu_bo_unref →<br/>VRAM buffer 归还 → 50GB 同步回到系统 ⚠️
 ```
 
 ### Zero-Copy Memory Transfer
@@ -447,6 +515,12 @@ Async Thread (Tokio)
 ├── WebSocket handling
 └── File I/O
 ```
+
+> **Note:** A proposed **worker process tier** would add a separate OS-process
+> dimension to this model — heavy backends (e.g. JAX on ROCm) run in dedicated
+> child processes with their own cgroup limits, so that a backend's memory
+> footprint is bounded and reclaimable by process teardown. See
+> [ARCHITECTURE_ROCM_JAX.md](ARCHITECTURE_ROCM_JAX.md).
 
 ## Extension Points
 

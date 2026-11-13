@@ -31,7 +31,7 @@ muda = "0.15"
 tray-icon = "0.19"
 rfd = "0.15"
 
-global-hotkey = "0.7"
+global-hotkey = "0.10"
 single-instance = "0.3.3"
 auto-launch = "0.6.0"
 starship-battery = "0.10.3"

@@ -28,7 +28,7 @@ parking_lot = "0.12"        # Faster mutexes than std (important for free-thread
 tao = "0.34"
 wry = { version = "0.54", features = ["devtools"] }
 muda = "0.15"
-tray-icon = "0.19"
+tray-icon = "0.26"
 rfd = "0.15"
 
 global-hotkey = "0.7"

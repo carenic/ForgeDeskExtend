@@ -381,7 +381,7 @@ jobs:
           cat FORGEDESK-${{ needs.preflight.outputs.version }}-CHECKSUMS.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.preflight.outputs.tag }}
           name: ForgeDesk v${{ needs.preflight.outputs.version }}

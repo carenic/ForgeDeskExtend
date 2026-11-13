@@ -358,9 +358,9 @@ dependencies = [
 
 [[package]]
 name = "bsdiff"
-version = "0.1.6"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53a5456cea81693e6d82a95ab193fdaca148588aa7665b2b05d51bb487b08e91"
+checksum = "b6709158fe6ca66c1f32eb27b4ae5997c67b0df350ae185831233af3e7a91213"
 
 [[package]]
 name = "bumpalo"
